@@ -14,7 +14,7 @@ GitHub Pages 僅提供前端；實績資料、帳號登入與存取權皆儲存�
 
 - 電子郵件／密碼登入
 - 分行、姓名篩選與共用雲端實績同步
-- CSV 批次上傳（限 `admin` 或 `editor`）
+- Excel（`.xlsx`）或 CSV 批次上傳（限 `admin` 或 `editor`）
 - `viewer` 唯讀權限
 
 ### 一次性設定
@@ -32,4 +32,4 @@ GitHub Pages 僅提供前端；實績資料、帳號登入與存取權皆儲存�
 4. 在 [`docs/config.js`](docs/config.js) 填入 Supabase **Project URL** 與 **anon public key**。這兩者可公開；絕不可填入 `service_role` key。
 5. 推送至 GitHub 的 `main` 分支。GitHub Pages 會從 `docs/` 發布。
 
-CSV 欄位依序為：`分行,理專姓名,季責任額,季進度(含在途),季達成率,基金進度,保險進度`。
+檔案欄位依序為：`分行,理專姓名,季責任額,季進度(含在途),季達成率,基金進度,保險進度`。Excel 會讀取第一個工作表；同一位人員（分行＋姓名）重新上傳後會覆寫舊有實績。

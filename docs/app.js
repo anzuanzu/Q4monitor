@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import * as XLSX from 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm';
 
 const advisors=[['板橋分行','SRM1','張瓊月',4400],['板橋分行','SRM1','宋婷婷',4400],['板橋分行','SRM1','刁蕙鈺',4400],['板橋分行','SRM1','溫志剛',4400],['板橋分行','SRM1','周韻如',4400],['板橋分行','SRM1','許凱婷',4400],['板橋分行','SRM1','宋柏陞',4400],['板橋分行','SRM1','李宗杰',4400],['板橋分行','SRM1','吳采妍',4400],['板橋分行','SRM2','李承紘',3400],['板橋分行','JRM','洪易佳',600],['華江分行','SRM1','詹采榆',4400],['華江分行','SRM1','廖敏慧',4400],['華江分行','SRM2','施雯晴',3400],['華江分行','SRM2','黃柏飛',3400],['華江分行','RM1','曹馨勻',2200],['華江分行','RM1','徐小凡',2200],['新板分行','HRM','楊璧菁',6000],['新板分行','SRM1','朱麗鳳',4400],['新板分行','SRM1','黃淑卿',4400],['新板分行','SRM2','艾祺倫',3400],['新板分行','SRM2','郭淑芬',3400],['新板分行','SRM2','林靜芸',3400],['新板分行','RM1','陳奕憲',2200],['新板分行','RM1','詹忠儒',2200],['新板分行','RM1','周至浩',2200],['新板分行','RM2','王泓權',1000],['新板分行','RM2','盧品豪',1000]].map(([branch,level,name,fund])=>({branch,level,name,fund}));
 const insurance={HRM:300,SRM1:250,SRM2:200,RM1:150,RM2:100,JRM:50};
@@ -56,19 +57,39 @@ async function applySession(session){
   canWrite=['admin','editor'].includes(role);setControls(canWrite);setSource(`● ${currentUser.email} · ${role==='viewer'?'唯讀':'已登入'}`,'success');await loadPerformance();
 }
 
-function parseCsv(text){
-  const rows=text.replace(/^\uFEFF/,'').trim().split(/\r?\n/).filter(Boolean).map(line=>line.split(',').map(cell=>cell.trim()));
-  const headers=rows.shift()||[];
-  const required=['分行','理專姓名','季責任額','季進度(含在途)','季達成率','基金進度','保險進度'];
-  if(required.some(name=>!headers.includes(name)))throw new Error('CSV 欄位不完整，請使用頁面提示的欄位名稱。');
-  const index=Object.fromEntries(headers.map((name,position)=>[name,position]));
-  return rows.map(row=>({branch:row[index['分行']]||'',advisor_name:row[index['理專姓名']]||'',quarter_target:row[index['季責任額']]||'',quarter_progress:row[index['季進度(含在途)']]||'',quarter_rate:row[index['季達成率']]||'',fund_progress:row[index['基金進度']]||'',insurance_progress:row[index['保險進度']]||''})).filter(row=>row.branch&&row.advisor_name);
+function parseCsvRows(text){
+  const rows=[];let row=[];let cell='';let quoted=false;
+  for(let index=0;index<text.length;index+=1){const char=text[index];const next=text[index+1];if(char==='"'&&quoted&&next==='"'){cell+='"';index+=1;}else if(char==='"'){quoted=!quoted;}else if(char===','&&!quoted){row.push(cell);cell='';}else if((char==='\n'||char==='\r')&&!quoted){if(char==='\r'&&next==='\n')index+=1;row.push(cell);if(row.some(value=>value.trim()))rows.push(row);row=[];cell='';}else{cell+=char;}}
+  row.push(cell);if(row.some(value=>value.trim()))rows.push(row);return rows;
 }
 
-async function uploadCsv(file){
+function normalizeHeader(value){return String(value??'').replace(/^\uFEFF/,'').replace(/[（）]/g,char=>char==='（'?'(':')').replace(/\s/g,'').trim();}
+
+function recordsFromRows(rows){
+  const [headerRow,...dataRows]=rows;
+  if(!headerRow)throw new Error('找不到欄位標題。');
+  const index=Object.fromEntries(headerRow.map((name,position)=>[normalizeHeader(name),position]));
+  const required=['分行','理專姓名','季責任額','季進度(含在途)','季達成率','基金進度','保險進度'];
+  if(required.some(name=>index[name]===undefined))throw new Error('檔案欄位不完整，請使用頁面提示的欄位名稱。');
+  return dataRows.map(row=>({branch:String(row[index['分行']]??'').trim(),advisor_name:String(row[index['理專姓名']]??'').trim(),quarter_target:String(row[index['季責任額']]??'').trim(),quarter_progress:String(row[index['季進度(含在途)']]??'').trim(),quarter_rate:String(row[index['季達成率']]??'').trim(),fund_progress:String(row[index['基金進度']]??'').trim(),insurance_progress:String(row[index['保險進度']]??'').trim()})).filter(row=>row.branch&&row.advisor_name);
+}
+
+async function parsePerformanceFile(file){
+  const extension=file.name.split('.').pop()?.toLowerCase();
+  if(extension==='csv')return recordsFromRows(parseCsvRows(await file.text()));
+  if(extension==='xlsx'){
+    const workbook=XLSX.read(await file.arrayBuffer(),{type:'array'});
+    const sheetName=workbook.SheetNames[0];
+    if(!sheetName)throw new Error('Excel 檔沒有工作表。');
+    return recordsFromRows(XLSX.utils.sheet_to_json(workbook.Sheets[sheetName],{header:1,defval:'',raw:false}));
+  }
+  throw new Error('僅支援 .xlsx 與 .csv 檔案。');
+}
+
+async function uploadPerformanceFile(file){
   if(!supabase||!currentUser||!canWrite)return;
   try{
-    const records=parseCsv(await file.text());
+    const records=await parsePerformanceFile(file);
     const permitted=new Set(advisors.map(item=>key(item.branch,item.name)));
     const invalid=records.filter(item=>!permitted.has(key(item.branch,item.advisor_name)));
     if(invalid.length)throw new Error(`CSV 有 ${invalid.length} 筆不在既有人員名單中的資料。`);
@@ -77,7 +98,7 @@ async function uploadCsv(file){
     const {error}=await supabase.from('performance_records').upsert(records,{onConflict:'branch,advisor_name'});
     if(error)throw error;
     await loadPerformance();
-  }catch(error){setMessage(`上傳失敗：${error.message||'請確認 CSV 格式。'}`,'error');}
+  }catch(error){setMessage(`上傳失敗：${error.message||'請確認 Excel 或 CSV 格式。'}`,'error');}
   $('csv-file').value='';
 }
 
@@ -92,7 +113,7 @@ async function signIn(event){
 
 async function init(){
   render();
-  $('branch-filter').addEventListener('change',render);$('name-filter').addEventListener('input',render);$('sync-button').addEventListener('click',loadPerformance);$('csv-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadCsv(file);});
+  $('branch-filter').addEventListener('change',render);$('name-filter').addEventListener('input',render);$('sync-button').addEventListener('click',loadPerformance);$('csv-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadPerformanceFile(file);});
   if(!isConfigured){$('setup-panel').hidden=false;$('login-panel').hidden=true;$('auth-button').disabled=true;$('auth-button').textContent='尚未設定 Supabase';setSource('● 等待 Supabase 連線設定');setMessage('尚未連接雲端資料庫。');return;}
   $('auth-button').addEventListener('click',()=>{$('login-panel').hidden=false;$('email').focus();});$('login-form').addEventListener('submit',event=>void signIn(event));$('signout-button').addEventListener('click',async()=>{await supabase.auth.signOut();await applySession(null);});
   supabase.auth.onAuthStateChange((_event,session)=>{void applySession(session);});
