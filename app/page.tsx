@@ -39,20 +39,45 @@ export default function Home() {
   const [branch, setBranch] = useState('全部分行');
   const [search, setSearch] = useState('');
   const [performance, setPerformance] = useState<Record<string, Performance>>({});
-  const [source, setSource] = useState('尚未載入實績資料');
+  const [source, setSource] = useState('正在連線中央績效資料庫');
+
+  async function loadSharedPerformance() {
+    try {
+      const response = await fetch('/api/performance', { cache: 'no-store' });
+      if (!response.ok) { setSource('請以授權帳號登入後讀取共享資料'); return; }
+      const payload = await response.json() as { records: Array<Record<string, string>> };
+      const records = payload.records.reduce<Record<string, Performance>>((items, record) => {
+        items[key(record.branch, record.advisor_name)] = { quarterTarget: record.quarter_target ?? '', quarterProgress: record.quarter_progress ?? '', quarterRate: record.quarter_rate ?? '', fundProgress: record.fund_progress ?? '', insuranceProgress: record.insurance_progress ?? '' };
+        return items;
+      }, {});
+      setPerformance(records);
+      setSource(`中央績效資料庫 · 已同步 ${Object.keys(records).length} 筆`);
+    } catch { setSource('目前無法連線中央績效資料庫'); }
+  }
 
   useEffect(() => {
-    fetch('/data/performance.csv').then((response) => response.ok ? response.text() : '').then((text) => {
-      const records = parseCsv(text);
-      if (Object.keys(records).length) { setPerformance(records); setSource(`已讀取預設資料 · ${Object.keys(records).length} 筆`); }
-    }).catch(() => undefined);
+    const timer = window.setTimeout(() => { void loadSharedPerformance(); }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const handleFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => { const records = parseCsv(String(reader.result || '')); setPerformance(records); setSource(records && Object.keys(records).length ? `已讀取 ${file.name} · ${Object.keys(records).length} 筆` : '找不到可對應的實績資料'); };
+    reader.onload = async () => {
+      const parsed = parseCsv(String(reader.result || ''));
+      const records = advisors.filter((advisor) => parsed[key(advisor.branch, advisor.name)]).map((advisor) => {
+        const row = parsed[key(advisor.branch, advisor.name)];
+        return { branch: advisor.branch, advisorName: advisor.name, ...row };
+      });
+      if (!records.length) { setSource('找不到可對應的人員績效資料'); return; }
+      setSource(`正在上傳 ${file.name} · ${records.length} 筆`);
+      try {
+        const response = await fetch('/api/performance', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ records }) });
+        if (!response.ok) throw new Error();
+        await loadSharedPerformance();
+      } catch { setSource('上傳失敗，請確認您已使用授權帳號登入'); }
+    };
     reader.readAsText(file, 'utf-8');
   };
 
@@ -61,7 +86,7 @@ export default function Home() {
   const loadedCount = Object.keys(performance).length;
 
   return <main>
-    <section className="hero"><div className="hero__topline"><span className="eyebrow">Q4 TARGETS · INTERNAL DASHBOARD</span><span className="data-status"><i />{source}</span></div><div className="hero__content"><div><p className="hero__kicker">第四季整合績效監控</p><h1>責任目標與實績</h1><p className="hero__description">基金與保險目標整合在同一張人員表；可直接載入季責任額、季進度（含在途）、季達成率及專案進度的真實績效 CSV。</p></div><label className="upload-button">讀取績效 CSV<input type="file" accept=".csv,text/csv" onChange={handleFile} /></label></div></section>
+    <section className="hero"><div className="hero__topline"><span className="eyebrow">Q4 TARGETS · SHARED PERFORMANCE</span><span className="data-status"><i />{source}</span></div><div className="hero__content"><div><p className="hero__kicker">第四季整合績效監控</p><h1>責任目標與實績</h1><p className="hero__description">資料會安全保存於中央績效資料庫；授權使用者在任何電腦登入後，都會看到同一份最新資料。</p></div><div className="hero-actions"><button className="sync-button" onClick={() => void loadSharedPerformance()}>同步最新資料</button><label className="upload-button">上傳績效 CSV<input type="file" accept=".csv,text/csv" onChange={handleFile} /></label></div></div></section>
     <section className="dashboard-shell">
       <div className="metric-grid" aria-label="專案摘要"><article className="metric-card metric-card--primary"><span>基金目標</span><strong>{(fundTotal / 10000).toFixed(2)}<em> 億</em></strong><p>第四季專案基金</p></article><article className="metric-card"><span>保險佣收目標</span><strong>{fmt(insuranceTotal)}<em> 萬</em></strong><p>第四季專案保險</p></article><article className="metric-card"><span>納入人員</span><strong>{advisors.length}<em> 位</em></strong><p>跨 3 家分行、6 個職級</p></article><article className="metric-card"><span>已載入實績</span><strong>{loadedCount}<em> 筆</em></strong><p>以分行與姓名對應</p></article></div>
       <div className="section-heading"><div><span className="eyebrow">BRANCH OVERVIEW</span><h2>分行責任目標</h2></div><p>基金／保險均以萬元為單位</p></div>
