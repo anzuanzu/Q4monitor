@@ -9,10 +9,13 @@ create table if not exists public.performance_records (
   quarter_rate text not null default '',
   fund_progress text not null default '',
   insurance_progress text not null default '',
+  source_date text not null default '',
   updated_at timestamptz not null default now(),
   updated_by uuid not null default auth.uid(),
   primary key (branch, advisor_name)
 );
+
+alter table public.performance_records add column if not exists source_date text not null default '';
 
 create table if not exists public.app_members (
   user_id uuid primary key references auth.users(id) on delete cascade,

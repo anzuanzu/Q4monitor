@@ -34,16 +34,17 @@ function render(){
   $('staff').innerHTML=shown.map(item=>{const actual=performance[key(item.branch,item.name)]||{};return`<tr><td>${esc(item.branch)}</td><td><b class="level" style="color:${colors[item.level]}">${esc(item.level)}</b></td><td class="name">${esc(item.name)}</td><td>${esc(actual.quarterTarget||'—')}</td><td>${esc(actual.quarterProgress||'—')}</td><td>${esc(actual.quarterRate||'—')}</td><td class="target">${fmt(item.fund)} 萬</td><td>${esc(actual.fundProgress||'—')}</td><td class="target">${fmt(insurance[item.level])} 萬</td><td>${esc(actual.insuranceProgress||'—')}</td></tr>`}).join('');
 }
 
-function setControls(enabled){$('sync-button').disabled=!enabled;$('csv-file').disabled=!enabled;$('csv-button').classList.toggle('is-disabled',!enabled);}
-function recordMap(records){return Object.fromEntries(records.map(item=>[key(item.branch,item.advisor_name),{quarterTarget:item.quarter_target,quarterProgress:item.quarter_progress,quarterRate:item.quarter_rate,fundProgress:item.fund_progress,insuranceProgress:item.insurance_progress}]));}
+function setControls(enabled){$('sync-button').disabled=!enabled;$('csv-file').disabled=!enabled;$('raw-file').disabled=!enabled;$('csv-button').classList.toggle('is-disabled',!enabled);$('raw-file-button').classList.toggle('is-disabled',!enabled);}
+function recordMap(records){return Object.fromEntries(records.map(item=>[key(item.branch,item.advisor_name),{quarterTarget:item.quarter_target,quarterProgress:item.quarter_progress,quarterRate:item.quarter_rate,fundProgress:item.fund_progress,insuranceProgress:item.insurance_progress,sourceDate:item.source_date||''}]));}
 
 async function loadPerformance(){
   if(!supabase||!currentUser)return;
   setMessage('正在同步雲端實績資料…');
-  const {data,error}=await supabase.from('performance_records').select('branch, advisor_name, quarter_target, quarter_progress, quarter_rate, fund_progress, insurance_progress').order('branch').order('advisor_name');
+  const {data,error}=await supabase.from('performance_records').select('branch, advisor_name, quarter_target, quarter_progress, quarter_rate, fund_progress, insurance_progress, source_date').order('branch').order('advisor_name');
   if(error){setMessage(`無法讀取資料：${error.message}`,'error');return;}
   performance=recordMap(data||[]);
-  setMessage(`已同步 ${data?.length||0} 筆雲端實績資料。`,'success');
+  const sourceDates=[...new Set((data||[]).map(item=>item.source_date).filter(Boolean))];
+  setMessage(`已同步 ${data?.length||0} 筆雲端實績資料。${sourceDates.length?`季職達資料：${sourceDates.join('、')}`:''}`,'success');
   render();
 }
 
@@ -87,6 +88,38 @@ async function parsePerformanceFile(file){
   throw new Error('僅支援 .xlsx 與 .csv 檔案。');
 }
 
+function asNumber(value){
+  const number=typeof value==='number'?value:Number(String(value??'').replace(/,/g,''));
+  return Number.isFinite(number)?number:0;
+}
+
+function formatAmount(value){return new Intl.NumberFormat('zh-TW',{maximumFractionDigits:2}).format(Math.round((value+Number.EPSILON)*100)/100);}
+function formatRate(progress,target){return target>0?`${(progress/target*100).toFixed(2)}%`:'—';}
+
+async function parseQuarterRawFile(file){
+  if(file.name.split('.').pop()?.toLowerCase()!=='xlsx')throw new Error('季職達原始檔僅支援 .xlsx。');
+  const workbook=XLSX.read(await file.arrayBuffer(),{type:'array'});
+  const sheetName=workbook.SheetNames[0];
+  if(!sheetName)throw new Error('Excel 檔沒有工作表。');
+  const worksheet=workbook.Sheets[sheetName];
+  const rows=XLSX.utils.sheet_to_json(worksheet,{header:1,defval:'',raw:true});
+  const sourceDate=String(worksheet.A3?.v??'').trim();
+  if(!sourceDate)throw new Error('找不到 A3 的資料日期。');
+  const advisorByName=new Map(advisors.map(advisor=>[advisor.name,advisor]));
+  const records=[];
+  for(const row of rows){
+    const advisor=advisorByName.get(String(row[5]??'').trim());
+    if(!advisor)continue;
+    const quarterTarget=asNumber(row[9])*3;
+    const quarterProgress=asNumber(row[59])+asNumber(row[39])+asNumber(row[40]);
+    const current=performance[key(advisor.branch,advisor.name)]||{};
+    records.push({branch:advisor.branch,advisor_name:advisor.name,quarter_target:formatAmount(quarterTarget),quarter_progress:formatAmount(quarterProgress),quarter_rate:formatRate(quarterProgress,quarterTarget),fund_progress:current.fundProgress||'',insurance_progress:current.insuranceProgress||'',source_date:sourceDate});
+  }
+  const missing=advisors.filter(advisor=>!records.some(record=>record.advisor_name===advisor.name));
+  if(missing.length)throw new Error(`原始檔缺少 ${missing.length} 位人員：${missing.map(item=>item.name).join('、')}`);
+  return {sourceDate,records};
+}
+
 async function uploadPerformanceFile(file){
   if(!supabase||!currentUser||!canWrite)return;
   try{
@@ -96,11 +129,25 @@ async function uploadPerformanceFile(file){
     if(invalid.length)throw new Error(`CSV 有 ${invalid.length} 筆不在既有人員名單中的資料。`);
     if(!records.length)throw new Error('找不到可上傳的績效資料。');
     setMessage(`正在寫入 ${records.length} 筆雲端實績資料…`);
-    const {error}=await supabase.from('performance_records').upsert(records,{onConflict:'branch,advisor_name'});
+    const recordsWithSourceDate=records.map(record=>({...record,source_date:performance[key(record.branch,record.advisor_name)]?.sourceDate||''}));
+    const {error}=await supabase.from('performance_records').upsert(recordsWithSourceDate,{onConflict:'branch,advisor_name'});
     if(error)throw error;
     await loadPerformance();
   }catch(error){setMessage(`上傳失敗：${error.message||'請確認 Excel 或 CSV 格式。'}`,'error');}
   $('csv-file').value='';
+}
+
+async function uploadQuarterRawFile(file){
+  if(!supabase||!currentUser||!canWrite)return;
+  try{
+    setMessage('正在讀取季職達原始檔…');
+    const {sourceDate,records}=await parseQuarterRawFile(file);
+    setMessage(`正在以 ${sourceDate} 更新 ${records.length} 位人員的季職達資料…`);
+    const {error}=await supabase.from('performance_records').upsert(records,{onConflict:'branch,advisor_name'});
+    if(error)throw error;
+    await loadPerformance();
+  }catch(error){setMessage(`季職達原始檔上傳失敗：${error.message||'請確認 Excel 格式。'}`,'error');}
+  $('raw-file').value='';
 }
 
 async function signIn(event){
@@ -123,7 +170,7 @@ async function signInWithManagerPassword(event){
 
 async function init(){
   render();
-  $('branch-filter').addEventListener('change',render);$('name-filter').addEventListener('input',render);$('sync-button').addEventListener('click',loadPerformance);$('csv-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadPerformanceFile(file);});
+  $('branch-filter').addEventListener('change',render);$('name-filter').addEventListener('input',render);$('sync-button').addEventListener('click',loadPerformance);$('raw-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadQuarterRawFile(file);});$('csv-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadPerformanceFile(file);});
   if(!isConfigured){$('setup-panel').hidden=false;$('login-panel').hidden=true;$('auth-button').disabled=true;$('auth-button').textContent='尚未設定 Supabase';setSource('● 等待 Supabase 連線設定');setMessage('尚未連接雲端資料庫。');return;}
   $('manager-login-form').hidden=!hasManagerUploadAccount;
   $('auth-button').addEventListener('click',()=>{$('login-panel').hidden=false;(hasManagerUploadAccount?$('manager-password'):$('email')).focus();});$('login-form').addEventListener('submit',event=>void signIn(event));$('manager-login-form').addEventListener('submit',event=>void signInWithManagerPassword(event));$('signout-button').addEventListener('click',async()=>{await supabase.auth.signOut();await applySession(null);});
