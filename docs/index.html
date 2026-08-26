@@ -17,8 +17,11 @@
   </header>
   <main class="container main">
     <section id="login-panel" class="login-panel" aria-labelledby="login-title" hidden>
-      <div><span class="eyebrow">SUPABASE AUTH</span><h2 id="login-title">登入後查看與上傳績效</h2><p>僅限管理者在 Supabase 建立或邀請的帳號。績效資料不會存放於 GitHub。</p></div>
-      <form id="login-form" class="login-form"><label>電子郵件<input id="email" type="email" autocomplete="email" required placeholder="name@company.com"></label><label>密碼<input id="password" type="password" autocomplete="current-password" required placeholder="輸入密碼"></label><button type="submit" class="submit-button">登入</button><p id="login-message" class="form-message" aria-live="polite"></p></form>
+      <div><span class="eyebrow">SUPABASE AUTH</span><h2 id="login-title">登入後查看與上傳績效</h2><p>一般帳號可依角色查看或上傳；管理人員可使用專用上傳密碼快速取得上傳權限。績效資料不會存放於 GitHub。</p></div>
+      <div class="login-options">
+        <form id="manager-login-form" class="manager-form" hidden><span class="eyebrow">MANAGER UPLOAD</span><label>管理上傳密碼<input id="manager-password" type="password" autocomplete="current-password" required placeholder="輸入管理密碼"></label><button type="submit" class="submit-button">驗證並開啟上傳</button><p id="manager-login-message" class="form-message" aria-live="polite"></p></form>
+        <form id="login-form" class="login-form"><span class="eyebrow">ACCOUNT LOGIN</span><label>電子郵件<input id="email" type="email" autocomplete="email" required placeholder="name@company.com"></label><label>密碼<input id="password" type="password" autocomplete="current-password" required placeholder="輸入密碼"></label><button type="submit" class="submit-button secondary">使用帳號登入</button><p id="login-message" class="form-message" aria-live="polite"></p></form>
+      </div>
     </section>
     <section id="setup-panel" class="setup-panel" aria-labelledby="setup-title" hidden><span class="eyebrow">CONNECTION REQUIRED</span><h2 id="setup-title">尚未連接 Supabase</h2><p>請依照專案內的設定說明填入 Supabase 專案網址與匿名金鑰；資料庫與帳號權限會由 Supabase 管理。</p></section>
     <section id="metrics" class="metrics"></section>

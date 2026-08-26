@@ -7,6 +7,7 @@ const branches=['板橋分行','華江分行','新板分行'];
 const colors={HRM:'#cc8b3c',SRM1:'#0e7c66',SRM2:'#4f8c7a',RM1:'#86ad96',RM2:'#c6d7b7',JRM:'#e5b869'};
 const config=window.SUPABASE_CONFIG||{};
 const isConfigured=Boolean(config.url&&config.anonKey&&config.url.startsWith('https://'));
+const hasManagerUploadAccount=Boolean(config.uploadAccountEmail&&String(config.uploadAccountEmail).includes('@'));
 const supabase=isConfigured?createClient(config.url,config.anonKey):null;
 let performance={};
 let currentUser=null;
@@ -104,18 +105,28 @@ async function uploadPerformanceFile(file){
 
 async function signIn(event){
   event.preventDefault();
-  const email=$('email').value.trim();const password=$('password').value;
-  $('login-message').textContent='正在登入…';
+  await signInWithPassword($('email').value.trim(),$('password').value,$('login-message'));
+}
+
+async function signInWithPassword(email,password,messageNode){
+  if(!email||!password){messageNode.textContent='請輸入帳號與密碼。';return;}
+  messageNode.textContent='正在驗證…';
   const {data,error}=await supabase.auth.signInWithPassword({email,password});
-  if(error){$('login-message').textContent=`登入失敗：${error.message}`;return;}
-  $('login-message').textContent='';await applySession(data.session);
+  if(error){messageNode.textContent=`登入失敗：${error.message}`;return;}
+  messageNode.textContent='';await applySession(data.session);
+}
+
+async function signInWithManagerPassword(event){
+  event.preventDefault();
+  await signInWithPassword(String(config.uploadAccountEmail),$('manager-password').value,$('manager-login-message'));
 }
 
 async function init(){
   render();
   $('branch-filter').addEventListener('change',render);$('name-filter').addEventListener('input',render);$('sync-button').addEventListener('click',loadPerformance);$('csv-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadPerformanceFile(file);});
   if(!isConfigured){$('setup-panel').hidden=false;$('login-panel').hidden=true;$('auth-button').disabled=true;$('auth-button').textContent='尚未設定 Supabase';setSource('● 等待 Supabase 連線設定');setMessage('尚未連接雲端資料庫。');return;}
-  $('auth-button').addEventListener('click',()=>{$('login-panel').hidden=false;$('email').focus();});$('login-form').addEventListener('submit',event=>void signIn(event));$('signout-button').addEventListener('click',async()=>{await supabase.auth.signOut();await applySession(null);});
+  $('manager-login-form').hidden=!hasManagerUploadAccount;
+  $('auth-button').addEventListener('click',()=>{$('login-panel').hidden=false;(hasManagerUploadAccount?$('manager-password'):$('email')).focus();});$('login-form').addEventListener('submit',event=>void signIn(event));$('manager-login-form').addEventListener('submit',event=>void signInWithManagerPassword(event));$('signout-button').addEventListener('click',async()=>{await supabase.auth.signOut();await applySession(null);});
   supabase.auth.onAuthStateChange((_event,session)=>{void applySession(session);});
   const {data:{session}}=await supabase.auth.getSession();await applySession(session);
 }
