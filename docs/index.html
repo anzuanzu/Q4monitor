@@ -1,4 +1,36 @@
 <!doctype html>
-<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="第四季基金、保險與實績整合監控表"><title>第四季整合績效監控表</title><link rel="stylesheet" href="styles.css"></head>
-<body><header class="hero"><div class="container top"><span class="eyebrow">Q4 TARGETS · PUBLIC OVERVIEW</span><span id="source" class="source">● 公開版不顯示實績資料</span></div><div class="container hero-content"><div><p class="kicker">第四季整合績效監控</p><h1>責任目標總覽</h1><p>公開版僅展示責任目標；共享績效資料請使用受授權保護的私有監控站。</p></div><a class="upload" href="https://q4-fund-monitor-2026.james888888.chatgpt.site">開啟私有監控站</a></div></header>
-<main class="container main"><section id="metrics" class="metrics"></section><section><div class="heading"><div><span class="eyebrow">BRANCH OVERVIEW</span><h2>分行責任目標</h2></div><span>基金／保險均以萬元為單位</span></div><div id="branches" class="branches"></div></section><section class="panel"><div class="heading staff-heading"><div><span class="eyebrow">INTEGRATED PERSONNEL TABLE</span><h2>人員整合目標與實績</h2></div><span id="row-count"></span></div><div class="filters"><label>分行<select id="branch-filter"><option value="all">全部分行</option><option>板橋分行</option><option>華江分行</option><option>新板分行</option></select></label><label>姓名<input id="name-filter" placeholder="輸入姓名搜尋"></label><span>CSV 欄位：分行、理專姓名、季責任額、季進度(含在途)、季達成率、基金進度、保險進度</span></div><div class="table-wrap"><table><thead><tr><th>分行</th><th>職級</th><th>理專姓名</th><th>季責任額</th><th>季進度（含在途）</th><th>季達成率</th><th class="target">基金目標</th><th>基金進度</th><th class="target">保險目標</th><th>保險進度</th></tr></thead><tbody id="staff"></tbody></table></div></section></main><footer>資料版本：第四季基金專案與保險佣收責任目標 · 實績可由 CSV 檔案讀取</footer><script src="app.js"></script></body></html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="第四季基金、保險與季責任額整合績效監控表">
+  <title>第四季整合績效監控表</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="container top"><span class="eyebrow">Q4 PERFORMANCE · SECURE WORKSPACE</span><span id="source" class="source" aria-live="polite">● 尚未登入</span></div>
+    <div class="container hero-content">
+      <div><p class="kicker">第四季整合績效監控</p><h1>責任目標與<br>實績進度</h1><p>基金、保險與季責任額整合於同一張表；登入後可讀取及同步全體授權使用者共用的雲端實績資料。</p></div>
+      <div class="hero-actions"><button id="auth-button" class="upload" type="button">登入績效系統</button><button id="signout-button" class="text-button" type="button" hidden>登出</button></div>
+    </div>
+  </header>
+  <main class="container main">
+    <section id="login-panel" class="login-panel" aria-labelledby="login-title" hidden>
+      <div><span class="eyebrow">SUPABASE AUTH</span><h2 id="login-title">登入後查看與上傳績效</h2><p>僅限管理者在 Supabase 建立或邀請的帳號。績效資料不會存放於 GitHub。</p></div>
+      <form id="login-form" class="login-form"><label>電子郵件<input id="email" type="email" autocomplete="email" required placeholder="name@company.com"></label><label>密碼<input id="password" type="password" autocomplete="current-password" required placeholder="輸入密碼"></label><button type="submit" class="submit-button">登入</button><p id="login-message" class="form-message" aria-live="polite"></p></form>
+    </section>
+    <section id="setup-panel" class="setup-panel" aria-labelledby="setup-title" hidden><span class="eyebrow">CONNECTION REQUIRED</span><h2 id="setup-title">尚未連接 Supabase</h2><p>請依照專案內的設定說明填入 Supabase 專案網址與匿名金鑰；資料庫與帳號權限會由 Supabase 管理。</p></section>
+    <section id="metrics" class="metrics"></section>
+    <section><div class="heading"><div><span class="eyebrow">BRANCH OVERVIEW</span><h2>分行責任目標</h2></div><span>基金／保險均以萬元為單位</span></div><div id="branches" class="branches"></div></section>
+    <section class="panel" aria-labelledby="staff-title">
+      <div class="heading staff-heading"><div><span class="eyebrow">INTEGRATED PERSONNEL TABLE</span><h2 id="staff-title">人員整合目標與實績</h2></div><div class="staff-actions"><span id="row-count"></span><button id="sync-button" class="sync-button" type="button" disabled>同步最新資料</button><label id="csv-button" class="csv-button is-disabled">上傳績效 CSV<input id="csv-file" type="file" accept=".csv,text/csv" disabled></label></div></div>
+      <div class="filters"><label>分行<select id="branch-filter"><option value="all">全部分行</option><option>板橋分行</option><option>華江分行</option><option>新板分行</option></select></label><label>姓名<input id="name-filter" placeholder="輸入姓名搜尋"></label><span>CSV 欄位：分行、理專姓名、季責任額、季進度(含在途)、季達成率、基金進度、保險進度</span></div>
+      <p id="data-message" class="data-message" aria-live="polite">登入後可讀取實績資料。</p>
+      <div class="table-wrap"><table><thead><tr><th>分行</th><th>職級</th><th>理專姓名</th><th>季責任額</th><th>季進度（含在途）</th><th>季達成率</th><th class="target">基金目標</th><th>基金進度</th><th class="target">保險目標</th><th>保險進度</th></tr></thead><tbody id="staff"></tbody></table></div>
+    </section>
+  </main>
+  <footer>資料儲存：Supabase PostgreSQL · 存取權由管理者授權 · GitHub Pages 不含實績資料</footer>
+  <script src="config.js"></script><script type="module" src="app.js"></script>
+</body>
+</html>

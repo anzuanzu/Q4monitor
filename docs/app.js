@@ -1,4 +1,101 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
 const advisors=[['板橋分行','SRM1','張瓊月',4400],['板橋分行','SRM1','宋婷婷',4400],['板橋分行','SRM1','刁蕙鈺',4400],['板橋分行','SRM1','溫志剛',4400],['板橋分行','SRM1','周韻如',4400],['板橋分行','SRM1','許凱婷',4400],['板橋分行','SRM1','宋柏陞',4400],['板橋分行','SRM1','李宗杰',4400],['板橋分行','SRM1','吳采妍',4400],['板橋分行','SRM2','李承紘',3400],['板橋分行','JRM','洪易佳',600],['華江分行','SRM1','詹采榆',4400],['華江分行','SRM1','廖敏慧',4400],['華江分行','SRM2','施雯晴',3400],['華江分行','SRM2','黃柏飛',3400],['華江分行','RM1','曹馨勻',2200],['華江分行','RM1','徐小凡',2200],['新板分行','HRM','楊璧菁',6000],['新板分行','SRM1','朱麗鳳',4400],['新板分行','SRM1','黃淑卿',4400],['新板分行','SRM2','艾祺倫',3400],['新板分行','SRM2','郭淑芬',3400],['新板分行','SRM2','林靜芸',3400],['新板分行','RM1','陳奕憲',2200],['新板分行','RM1','詹忠儒',2200],['新板分行','RM1','周至浩',2200],['新板分行','RM2','王泓權',1000],['新板分行','RM2','盧品豪',1000]].map(([branch,level,name,fund])=>({branch,level,name,fund}));
-const insurance={HRM:300,SRM1:250,SRM2:200,RM1:150,RM2:100,JRM:50},branches=['板橋分行','華江分行','新板分行'],colors={HRM:'#cc8b3c',SRM1:'#0e7c66',SRM2:'#4f8c7a',RM1:'#86ad96',RM2:'#c6d7b7',JRM:'#e5b869'};let performance={};const fmt=n=>n.toLocaleString('zh-TW'),key=(branch,name)=>`${branch}-${name}`,total=(items,field)=>items.reduce((sum,item)=>sum+(field==='fund'?item.fund:insurance[item.level]),0);
-function render(){const fundTotal=total(advisors,'fund'),insuranceTotal=total(advisors,'insurance'),loaded=Object.keys(performance).length;document.getElementById('metrics').innerHTML=`<article class="metric primary"><span>基金目標</span><strong>${(fundTotal/10000).toFixed(2)}<em> 億</em></strong><p>第四季專案基金</p></article><article class="metric"><span>保險佣收目標</span><strong>${fmt(insuranceTotal)}<em> 萬</em></strong><p>第四季專案保險</p></article><article class="metric"><span>納入人員</span><strong>${advisors.length}<em> 位</em></strong><p>跨 3 家分行、6 個職級</p></article><article class="metric"><span>已載入實績</span><strong>${loaded}<em> 筆</em></strong><p>以分行與姓名對應</p></article>`;document.getElementById('branches').innerHTML=branches.map(branch=>{const people=advisors.filter(x=>x.branch===branch);return`<article class="branch"><div><b>${branch.replace('分行','')}</b><small>${people.length} 位人員</small></div><strong>${fmt(total(people,'fund'))} <em>萬</em></strong><p>基金目標</p><aside><span>保險佣收目標</span><b>${fmt(total(people,'insurance'))} 萬</b></aside></article>`}).join('');const selected=document.getElementById('branch-filter').value,name=document.getElementById('name-filter').value.trim(),shown=advisors.filter(x=>(selected==='all'||x.branch===selected)&&x.name.includes(name));document.getElementById('row-count').textContent=`${shown.length} / ${advisors.length} 筆`;document.getElementById('staff').innerHTML=shown.map(x=>{const a=performance[key(x.branch,x.name)]||{};return`<tr><td>${x.branch}</td><td><b class="level" style="color:${colors[x.level]}">${x.level}</b></td><td class="name">${x.name}</td><td>${a.quarterTarget||'—'}</td><td>${a.quarterProgress||'—'}</td><td>${a.quarterRate||'—'}</td><td class="target">${fmt(x.fund)} 萬</td><td>${a.fundProgress||'—'}</td><td class="target">${fmt(insurance[x.level])} 萬</td><td>${a.insuranceProgress||'—'}</td></tr>`}).join('');}
-document.getElementById('branch-filter').addEventListener('change',render);document.getElementById('name-filter').addEventListener('input',render);render();
+const insurance={HRM:300,SRM1:250,SRM2:200,RM1:150,RM2:100,JRM:50};
+const branches=['板橋分行','華江分行','新板分行'];
+const colors={HRM:'#cc8b3c',SRM1:'#0e7c66',SRM2:'#4f8c7a',RM1:'#86ad96',RM2:'#c6d7b7',JRM:'#e5b869'};
+const config=window.SUPABASE_CONFIG||{};
+const isConfigured=Boolean(config.url&&config.anonKey&&config.url.startsWith('https://'));
+const supabase=isConfigured?createClient(config.url,config.anonKey):null;
+let performance={};
+let currentUser=null;
+let canWrite=false;
+
+const $=id=>document.getElementById(id);
+const fmt=n=>Number(n).toLocaleString('zh-TW');
+const key=(branch,name)=>`${branch}-${name}`;
+const total=(items,field)=>items.reduce((sum,item)=>sum+(field==='fund'?item.fund:insurance[item.level]),0);
+const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' })[char]);
+const setMessage=(message,tone='')=>{const node=$('data-message');node.textContent=message;node.className=`data-message ${tone}`;};
+const setSource=(message,tone='')=>{const node=$('source');node.textContent=message;node.className=`source ${tone}`;};
+
+function render(){
+  const fundTotal=total(advisors,'fund');
+  const insuranceTotal=total(advisors,'insurance');
+  const loaded=Object.keys(performance).length;
+  $('metrics').innerHTML=`<article class="metric primary"><span>基金目標</span><strong>${(fundTotal/10000).toFixed(2)}<em> 億</em></strong><p>第四季專案基金</p></article><article class="metric"><span>保險佣收目標</span><strong>${fmt(insuranceTotal)}<em> 萬</em></strong><p>第四季專案保險</p></article><article class="metric"><span>納入人員</span><strong>${advisors.length}<em> 位</em></strong><p>跨 3 家分行、6 個職級</p></article><article class="metric"><span>雲端實績</span><strong>${loaded}<em> 筆</em></strong><p>${currentUser?'已由 Supabase 同步':'登入後讀取'}</p></article>`;
+  $('branches').innerHTML=branches.map(branch=>{const people=advisors.filter(item=>item.branch===branch);return`<article class="branch"><div><b>${esc(branch.replace('分行',''))}</b><small>${people.length} 位人員</small></div><strong>${fmt(total(people,'fund'))} <em>萬</em></strong><p>基金目標</p><aside><span>保險佣收目標</span><b>${fmt(total(people,'insurance'))} 萬</b></aside></article>`}).join('');
+  const selected=$('branch-filter').value;
+  const name=$('name-filter').value.trim();
+  const shown=advisors.filter(item=>(selected==='all'||item.branch===selected)&&item.name.includes(name));
+  $('row-count').textContent=`${shown.length} / ${advisors.length} 筆`;
+  $('staff').innerHTML=shown.map(item=>{const actual=performance[key(item.branch,item.name)]||{};return`<tr><td>${esc(item.branch)}</td><td><b class="level" style="color:${colors[item.level]}">${esc(item.level)}</b></td><td class="name">${esc(item.name)}</td><td>${esc(actual.quarterTarget||'—')}</td><td>${esc(actual.quarterProgress||'—')}</td><td>${esc(actual.quarterRate||'—')}</td><td class="target">${fmt(item.fund)} 萬</td><td>${esc(actual.fundProgress||'—')}</td><td class="target">${fmt(insurance[item.level])} 萬</td><td>${esc(actual.insuranceProgress||'—')}</td></tr>`}).join('');
+}
+
+function setControls(enabled){$('sync-button').disabled=!enabled;$('csv-file').disabled=!enabled;$('csv-button').classList.toggle('is-disabled',!enabled);}
+function recordMap(records){return Object.fromEntries(records.map(item=>[key(item.branch,item.advisor_name),{quarterTarget:item.quarter_target,quarterProgress:item.quarter_progress,quarterRate:item.quarter_rate,fundProgress:item.fund_progress,insuranceProgress:item.insurance_progress}]));}
+
+async function loadPerformance(){
+  if(!supabase||!currentUser)return;
+  setMessage('正在同步雲端實績資料…');
+  const {data,error}=await supabase.from('performance_records').select('branch, advisor_name, quarter_target, quarter_progress, quarter_rate, fund_progress, insurance_progress').order('branch').order('advisor_name');
+  if(error){setMessage(`無法讀取資料：${error.message}`,'error');return;}
+  performance=recordMap(data||[]);
+  setMessage(`已同步 ${data?.length||0} 筆雲端實績資料。`,'success');
+  render();
+}
+
+async function checkRole(){const {data,error}=await supabase.rpc('my_performance_role');if(error){setMessage(`無法驗證權限：${error.message}`,'error');return null;}return data;}
+
+async function applySession(session){
+  currentUser=session?.user||null;performance={};canWrite=false;
+  $('login-panel').hidden=Boolean(currentUser);$('auth-button').hidden=Boolean(currentUser);$('signout-button').hidden=!currentUser;
+  if(!currentUser){setControls(false);setSource('● 尚未登入');setMessage('登入後可讀取實績資料。');render();return;}
+  const role=await checkRole();
+  if(!role){setControls(false);setSource(`● ${currentUser.email} · 未授權`,'error');setMessage('此帳號尚未被管理者授權查看績效資料。','error');render();return;}
+  canWrite=['admin','editor'].includes(role);setControls(canWrite);setSource(`● ${currentUser.email} · ${role==='viewer'?'唯讀':'已登入'}`,'success');await loadPerformance();
+}
+
+function parseCsv(text){
+  const rows=text.replace(/^\uFEFF/,'').trim().split(/\r?\n/).filter(Boolean).map(line=>line.split(',').map(cell=>cell.trim()));
+  const headers=rows.shift()||[];
+  const required=['分行','理專姓名','季責任額','季進度(含在途)','季達成率','基金進度','保險進度'];
+  if(required.some(name=>!headers.includes(name)))throw new Error('CSV 欄位不完整，請使用頁面提示的欄位名稱。');
+  const index=Object.fromEntries(headers.map((name,position)=>[name,position]));
+  return rows.map(row=>({branch:row[index['分行']]||'',advisor_name:row[index['理專姓名']]||'',quarter_target:row[index['季責任額']]||'',quarter_progress:row[index['季進度(含在途)']]||'',quarter_rate:row[index['季達成率']]||'',fund_progress:row[index['基金進度']]||'',insurance_progress:row[index['保險進度']]||''})).filter(row=>row.branch&&row.advisor_name);
+}
+
+async function uploadCsv(file){
+  if(!supabase||!currentUser||!canWrite)return;
+  try{
+    const records=parseCsv(await file.text());
+    const permitted=new Set(advisors.map(item=>key(item.branch,item.name)));
+    const invalid=records.filter(item=>!permitted.has(key(item.branch,item.advisor_name)));
+    if(invalid.length)throw new Error(`CSV 有 ${invalid.length} 筆不在既有人員名單中的資料。`);
+    if(!records.length)throw new Error('找不到可上傳的績效資料。');
+    setMessage(`正在寫入 ${records.length} 筆雲端實績資料…`);
+    const {error}=await supabase.from('performance_records').upsert(records,{onConflict:'branch,advisor_name'});
+    if(error)throw error;
+    await loadPerformance();
+  }catch(error){setMessage(`上傳失敗：${error.message||'請確認 CSV 格式。'}`,'error');}
+  $('csv-file').value='';
+}
+
+async function signIn(event){
+  event.preventDefault();
+  const email=$('email').value.trim();const password=$('password').value;
+  $('login-message').textContent='正在登入…';
+  const {data,error}=await supabase.auth.signInWithPassword({email,password});
+  if(error){$('login-message').textContent=`登入失敗：${error.message}`;return;}
+  $('login-message').textContent='';await applySession(data.session);
+}
+
+async function init(){
+  render();
+  $('branch-filter').addEventListener('change',render);$('name-filter').addEventListener('input',render);$('sync-button').addEventListener('click',loadPerformance);$('csv-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadCsv(file);});
+  if(!isConfigured){$('setup-panel').hidden=false;$('login-panel').hidden=true;$('auth-button').disabled=true;$('auth-button').textContent='尚未設定 Supabase';setSource('● 等待 Supabase 連線設定');setMessage('尚未連接雲端資料庫。');return;}
+  $('auth-button').addEventListener('click',()=>{$('login-panel').hidden=false;$('email').focus();});$('login-form').addEventListener('submit',event=>void signIn(event));$('signout-button').addEventListener('click',async()=>{await supabase.auth.signOut();await applySession(null);});
+  supabase.auth.onAuthStateChange((_event,session)=>{void applySession(session);});
+  const {data:{session}}=await supabase.auth.getSession();await applySession(session);
+}
+void init();
