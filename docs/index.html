@@ -1,24 +1,4 @@
 <!doctype html>
-<html lang="zh-Hant">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="第四季基金專案與保險佣收責任目標監控表" />
-    <title>第四季專案績效監控表</title>
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <header class="hero">
-      <div class="container hero-top"><span class="eyebrow">Q4 TARGETS · INTERNAL DASHBOARD</span><div class="switch" role="group" aria-label="選擇專案"><button class="active" data-project="fund">基金專案</button><button data-project="insurance">保險佣收</button></div></div>
-      <div class="container hero-content"><div><p id="project-kicker" class="kicker">第四季基金專案</p><h1>績效監控表</h1><p>三家分行、28 位理財人員的責任目標總覽。</p></div><div class="hero-total"><span id="project-total-label">基金專案銷量目標合計</span><strong id="hero-total">9.72 億</strong><small id="hero-total-detail">NT$ 97,200 萬</small></div></div>
-    </header>
-    <main class="container main">
-      <section id="metrics" class="metrics" aria-label="專案摘要"></section>
-      <section><div class="section-heading"><div><span class="eyebrow">BRANCH OVERVIEW</span><h2>分行責任目標</h2></div><span>以萬元為單位</span></div><div id="branches" class="branches"></div></section>
-      <section class="panel"><div class="section-heading"><div><span class="eyebrow">ALLOCATION</span><h2>職級目標配置</h2></div><span>依各職級人數加總</span></div><div id="levels" class="levels"></div></section>
-      <section class="panel"><div class="section-heading staff-heading"><div><span class="eyebrow">PERSONNEL TARGETS</span><h2>人員責任目標</h2></div><span id="row-count"></span></div><label class="filter">分行<select id="branch-filter"><option value="all">全部分行</option><option>板橋分行</option><option>華江分行</option><option>新板分行</option></select></label><div id="staff-groups" class="staff-groups"></div></section>
-    </main>
-    <footer>資料版本：第四季基金專案與保險佣收責任目標 · 僅供內部管理使用</footer>
-    <script src="app.js"></script>
-  </body>
-</html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="第四季基金、保險與實績整合監控表"><title>第四季整合績效監控表</title><link rel="stylesheet" href="styles.css"></head>
+<body><header class="hero"><div class="container top"><span class="eyebrow">Q4 TARGETS · INTERNAL DASHBOARD</span><span id="source" class="source">● 尚未載入實績資料</span></div><div class="container hero-content"><div><p class="kicker">第四季整合績效監控</p><h1>責任目標與實績</h1><p>基金與保險目標整合在同一張人員表；可讀取含季職達、基金及保險數據的真實績效 CSV。</p></div><label class="upload">讀取績效 CSV<input id="csv-input" type="file" accept=".csv,text/csv"></label></div></header>
+<main class="container main"><section id="metrics" class="metrics"></section><section><div class="heading"><div><span class="eyebrow">BRANCH OVERVIEW</span><h2>分行責任目標</h2></div><span>基金／保險均以萬元為單位</span></div><div id="branches" class="branches"></div></section><section class="panel"><div class="heading staff-heading"><div><span class="eyebrow">INTEGRATED PERSONNEL TABLE</span><h2>人員整合目標與實績</h2></div><span id="row-count"></span></div><div class="filters"><label>分行<select id="branch-filter"><option value="all">全部分行</option><option>板橋分行</option><option>華江分行</option><option>新板分行</option></select></label><label>姓名<input id="name-filter" placeholder="輸入姓名搜尋"></label><span>CSV 欄位：分行、理專姓名、季職達、第四季專案基金、第四季專案保險</span></div><div class="table-wrap"><table><thead><tr><th>分行</th><th>職級</th><th>理專姓名</th><th>季職達</th><th>第四季專案基金</th><th>第四季專案保險</th><th class="target">基金目標</th><th class="target">保險目標</th></tr></thead><tbody id="staff"></tbody></table></div></section></main><footer>資料版本：第四季基金專案與保險佣收責任目標 · 實績可由 CSV 檔案讀取</footer><script src="app.js"></script></body></html>
