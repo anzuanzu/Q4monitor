@@ -38,7 +38,7 @@ function render(){
   $('staff').innerHTML=shown.map(item=>{const actual=performance[key(item.branch,item.name)]||{};return`<tr><td>${esc(item.branch)}</td><td><b class="level" style="color:${colors[item.level]}">${esc(item.level)}</b></td><td class="name">${esc(item.name)}</td><td>${esc(actual.quarterTarget||'—')}</td><td>${esc(actual.quarterProgress?fmtWhole(actual.quarterProgress):'—')}</td><td>${esc(actual.quarterRate||'—')}</td><td class="target">${fmt(item.fund)} 萬</td><td>${esc(actual.fundProgress||'—')}</td><td class="target">${fmt(insurance[item.level])} 萬</td><td>${esc(actual.insuranceProgress||'—')}</td></tr>`}).join('');
 }
 
-function setControls(enabled){$('sync-button').disabled=!enabled;$('csv-file').disabled=!enabled;$('raw-file').disabled=!enabled;$('csv-button').classList.toggle('is-disabled',!enabled);$('raw-file-button').classList.toggle('is-disabled',!enabled);}
+function setControls(enabled){$('sync-button').disabled=!enabled;$('csv-file').disabled=!enabled;$('raw-file').disabled=!enabled;$('pas-file').disabled=!enabled;$('csv-button').classList.toggle('is-disabled',!enabled);$('raw-file-button').classList.toggle('is-disabled',!enabled);$('pas-file-button').classList.toggle('is-disabled',!enabled);}
 function recordMap(records){return Object.fromEntries(records.map(item=>[key(item.branch,item.advisor_name),{quarterTarget:item.quarter_target,quarterProgress:item.quarter_progress,quarterRate:item.quarter_rate,fundProgress:item.fund_progress,insuranceProgress:item.insurance_progress,sourceDate:item.source_date||''}]));}
 
 async function loadPerformance(){
@@ -100,6 +100,34 @@ function asNumber(value){
 function formatAmount(value){return new Intl.NumberFormat('zh-TW',{maximumFractionDigits:2}).format(Math.round((value+Number.EPSILON)*100)/100);}
 function formatRate(progress,target){return target>0?`${(progress/target*100).toFixed(2)}%`:'—';}
 
+async function parsePasFundFile(file){
+  const extension=file.name.split('.').pop()?.toLowerCase();
+  if(!['html','htm'].includes(extension))throw new Error('PAS 基金報表僅支援 .html 或 .htm。');
+  const document=new DOMParser().parseFromString(await file.text(),'text/html');
+  const table=document.querySelector('#previewTable');
+  if(!table)throw new Error('找不到 PAS 報表資料表。');
+  const headers=[...table.querySelectorAll('thead th')].map(cell=>normalizeHeader(cell.textContent));
+  const nameIndex=headers.indexOf('理專名稱');
+  const levelIndex=headers.indexOf('職級');
+  const excludedIndex=headers.findIndex(header=>header==='主軸基金(排除專案基金)');
+  if(nameIndex<0||levelIndex<0||excludedIndex<0)throw new Error('找不到「理專名稱」或「主軸基金(排除專案基金)」欄位。');
+  const fundIndexes=headers.map((header,index)=>index).filter(index=>index>levelIndex&&index!==excludedIndex&&!headers[index].includes('合計'));
+  if(!fundIndexes.length)throw new Error('找不到可加總的其他基金欄位。');
+  const advisorByName=new Map(advisors.map(advisor=>[advisor.name,advisor]));
+  const records=[];
+  for(const row of table.querySelectorAll('tbody tr')){
+    const cells=[...row.querySelectorAll('td')];
+    const name=String(cells[nameIndex]?.textContent??'').trim();
+    const advisor=advisorByName.get(name);
+    if(!advisor)continue;
+    const totalFund=fundIndexes.reduce((sum,index)=>sum+asNumber(cells[index]?.textContent),0);
+    const current=performance[key(advisor.branch,advisor.name)]||{};
+    records.push({branch:advisor.branch,advisor_name:advisor.name,quarter_target:current.quarterTarget||'',quarter_progress:current.quarterProgress||'',quarter_rate:current.quarterRate||'',fund_progress:formatAmount(totalFund/10000),insurance_progress:current.insuranceProgress||'',source_date:current.sourceDate||''});
+  }
+  if(!records.length)throw new Error('找不到可與目前名單比對的理專姓名。');
+  return records;
+}
+
 async function parseQuarterRawFile(file){
   if(file.name.split('.').pop()?.toLowerCase()!=='xlsx')throw new Error('季職達原始檔僅支援 .xlsx。');
   const workbook=XLSX.read(await file.arrayBuffer(),{type:'array'});
@@ -154,6 +182,20 @@ async function uploadQuarterRawFile(file){
   $('raw-file').value='';
 }
 
+async function uploadPasFundFile(file){
+  if(!supabase||!currentUser||!canWrite)return;
+  try{
+    setMessage('正在讀取 PAS 基金報表…');
+    const records=await parsePasFundFile(file);
+    setMessage(`正在更新 ${records.length} 位人員的基金進度…`);
+    const {error}=await supabase.from('performance_records').upsert(records,{onConflict:'branch,advisor_name'});
+    if(error)throw error;
+    await loadPerformance();
+    setMessage(`已更新 ${records.length} 位人員的基金進度；金額已排除「主軸基金(排除專案基金)」欄位與合計銷量，單位為萬元。`,'success');
+  }catch(error){setMessage(`PAS 基金報表上傳失敗：${error.message||'請確認 HTML 報表格式。'}`,'error');}
+  $('pas-file').value='';
+}
+
 async function signIn(event){
   event.preventDefault();
   await signInWithPassword($('email').value.trim(),$('password').value,$('login-message'));
@@ -174,7 +216,7 @@ async function signInWithManagerPassword(event){
 
 async function init(){
   render();
-  $('branch-filter').addEventListener('change',render);$('name-filter').addEventListener('input',render);$('sync-button').addEventListener('click',loadPerformance);$('raw-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadQuarterRawFile(file);});$('csv-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadPerformanceFile(file);});
+  $('branch-filter').addEventListener('change',render);$('name-filter').addEventListener('input',render);$('sync-button').addEventListener('click',loadPerformance);$('raw-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadQuarterRawFile(file);});$('pas-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadPasFundFile(file);});$('csv-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadPerformanceFile(file);});
   if(!isConfigured){$('setup-panel').hidden=false;$('login-panel').hidden=true;$('auth-button').disabled=true;$('auth-button').textContent='尚未設定 Supabase';setSource('● 等待 Supabase 連線設定');setMessage('尚未連接雲端資料庫。');return;}
   $('manager-login-form').hidden=!hasManagerUploadAccount;
   $('auth-button').addEventListener('click',()=>{$('login-panel').hidden=false;(hasManagerUploadAccount?$('manager-password'):$('email')).focus();});$('login-form').addEventListener('submit',event=>void signIn(event));$('manager-login-form').addEventListener('submit',event=>void signInWithManagerPassword(event));$('signout-button').addEventListener('click',async()=>{await supabase.auth.signOut();await applySession(null);});
