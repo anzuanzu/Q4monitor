@@ -15,6 +15,10 @@ let canWrite=false;
 
 const $=id=>document.getElementById(id);
 const fmt=n=>Number(n).toLocaleString('zh-TW');
+const fmtWhole=value=>{
+  const number=Number(String(value??'').replace(/,/g,''));
+  return Number.isFinite(number)?Math.round(number).toLocaleString('zh-TW',{maximumFractionDigits:0}):String(value??'—');
+};
 const key=(branch,name)=>`${branch}-${name}`;
 const total=(items,field)=>items.reduce((sum,item)=>sum+(field==='fund'?item.fund:insurance[item.level]),0);
 const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' })[char]);
@@ -31,7 +35,7 @@ function render(){
   const name=$('name-filter').value.trim();
   const shown=advisors.filter(item=>(selected==='all'||item.branch===selected)&&item.name.includes(name));
   $('row-count').textContent=`${shown.length} / ${advisors.length} 筆`;
-  $('staff').innerHTML=shown.map(item=>{const actual=performance[key(item.branch,item.name)]||{};return`<tr><td>${esc(item.branch)}</td><td><b class="level" style="color:${colors[item.level]}">${esc(item.level)}</b></td><td class="name">${esc(item.name)}</td><td>${esc(actual.quarterTarget||'—')}</td><td>${esc(actual.quarterProgress||'—')}</td><td>${esc(actual.quarterRate||'—')}</td><td class="target">${fmt(item.fund)} 萬</td><td>${esc(actual.fundProgress||'—')}</td><td class="target">${fmt(insurance[item.level])} 萬</td><td>${esc(actual.insuranceProgress||'—')}</td></tr>`}).join('');
+  $('staff').innerHTML=shown.map(item=>{const actual=performance[key(item.branch,item.name)]||{};return`<tr><td>${esc(item.branch)}</td><td><b class="level" style="color:${colors[item.level]}">${esc(item.level)}</b></td><td class="name">${esc(item.name)}</td><td>${esc(actual.quarterTarget||'—')}</td><td>${esc(actual.quarterProgress?fmtWhole(actual.quarterProgress):'—')}</td><td>${esc(actual.quarterRate||'—')}</td><td class="target">${fmt(item.fund)} 萬</td><td>${esc(actual.fundProgress||'—')}</td><td class="target">${fmt(insurance[item.level])} 萬</td><td>${esc(actual.insuranceProgress||'—')}</td></tr>`}).join('');
 }
 
 function setControls(enabled){$('sync-button').disabled=!enabled;$('csv-file').disabled=!enabled;$('raw-file').disabled=!enabled;$('csv-button').classList.toggle('is-disabled',!enabled);$('raw-file-button').classList.toggle('is-disabled',!enabled);}
