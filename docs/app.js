@@ -29,6 +29,11 @@ const defaultBranchTarget=(branch,field)=>field==='quarterTarget'?progressTotal(
 const branchTarget=(branch,field)=>hasValue(branchTargets[branch]?.[field])?asNumber(branchTargets[branch][field]):defaultBranchTarget(branch,field);
 const branchRate=(progress,target)=>target>0?`${(progress/target*100).toFixed(2)}%`:'—';
 const money=value=>`${fmtWhole(value)} 萬`;
+const achievedItemCount=(item,actual)=>[
+  hasValue(actual.quarterTarget)&&asNumber(actual.quarterTarget)>0&&asNumber(actual.quarterProgress)>=asNumber(actual.quarterTarget),
+  hasValue(actual.fundProgress)&&asNumber(actual.fundProgress)>=item.fund,
+  hasValue(actual.insuranceProgress)&&asNumber(actual.insuranceProgress)>=insurance[item.level],
+].filter(Boolean).length;
 const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' })[char]);
 const setMessage=(message,tone='')=>{const node=$('data-message');node.textContent=message;node.className=`data-message ${tone}`;};
 const setSource=(message,tone='')=>{const node=$('source');node.textContent=message;node.className=`source ${tone}`;};
@@ -47,7 +52,7 @@ function render(){
   const name=$('name-filter').value.trim();
   const shown=advisors.filter(item=>(selected==='all'||item.branch===selected)&&item.name.includes(name));
   $('row-count').textContent=`${shown.length} / ${advisors.length} 筆`;
-  $('staff').innerHTML=shown.map(item=>{const actual=performance[key(item.branch,item.name)]||{};return`<tr><td>${esc(item.branch)}</td><td><b class="level" style="color:${colors[item.level]}">${esc(item.level)}</b></td><td class="name">${esc(item.name)}</td><td>${esc(actual.quarterTarget||'—')}</td><td>${esc(actual.quarterProgress?fmtWhole(actual.quarterProgress):'—')}</td><td>${esc(actual.quarterRate||'—')}</td><td class="target">${fmt(item.fund)} 萬</td><td>${esc(actual.fundProgress?`${fmtWhole(actual.fundProgress)} 萬`:'—')}</td><td class="target">${fmt(insurance[item.level])} 萬</td><td>${esc(actual.insuranceProgress?money(actual.insuranceProgress):'—')}</td></tr>`}).join('');
+  $('staff').innerHTML=shown.map(item=>{const actual=performance[key(item.branch,item.name)]||{};const count=achievedItemCount(item,actual);return`<tr><td>${esc(item.branch)}</td><td><b class="level" style="color:${colors[item.level]}">${esc(item.level)}</b></td><td class="name">${esc(item.name)}</td><td>${esc(actual.quarterTarget||'—')}</td><td>${esc(actual.quarterProgress?fmtWhole(actual.quarterProgress):'—')}</td><td>${esc(actual.quarterRate||'—')}</td><td class="target">${fmt(item.fund)} 萬</td><td>${esc(actual.fundProgress?`${fmtWhole(actual.fundProgress)} 萬`:'—')}</td><td class="target">${fmt(insurance[item.level])} 萬</td><td>${esc(actual.insuranceProgress?money(actual.insuranceProgress):'—')}</td><td class="achievement ${count===3?'complete':''}">${count} / 3</td></tr>`}).join('');
 }
 
 function setControls(enabled){$('sync-button').disabled=!enabled;$('csv-file').disabled=!enabled;$('raw-file').disabled=!enabled;$('pas-file').disabled=!enabled;$('save-branch-targets').disabled=!enabled;$('csv-button').classList.toggle('is-disabled',!enabled);$('raw-file-button').classList.toggle('is-disabled',!enabled);$('pas-file-button').classList.toggle('is-disabled',!enabled);}
