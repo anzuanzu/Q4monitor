@@ -15,6 +15,9 @@ create table if not exists public.performance_records (
   primary key (branch, advisor_name)
 );
 
+-- 分行手動目標會以 advisor_name = '__分行季目標__' 儲存於此表；
+-- quarter_target、fund_progress、insurance_progress 分別代表分行季責任額、基金目標、保險目標。
+
 alter table public.performance_records add column if not exists source_date text not null default '';
 
 create table if not exists public.app_members (
