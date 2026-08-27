@@ -70,6 +70,7 @@ function parseCsvRows(text){
 }
 
 function normalizeHeader(value){return String(value??'').replace(/^\uFEFF/,'').replace(/[（）]/g,char=>char==='（'?'(':')').replace(/\s/g,'').trim();}
+function normalizeAdvisorName(value){return String(value??'').replace(/\s/g,'').trim();}
 
 function recordsFromRows(rows){
   const [headerRow,...dataRows]=rows;
@@ -113,11 +114,12 @@ async function parsePasFundFile(file){
   if(nameIndex<0||levelIndex<0||excludedIndex<0)throw new Error('找不到「理專名稱」或「主軸基金(排除專案基金)」欄位。');
   const fundIndexes=headers.map((header,index)=>index).filter(index=>index>levelIndex&&index!==excludedIndex&&!headers[index].includes('合計'));
   if(!fundIndexes.length)throw new Error('找不到可加總的其他基金欄位。');
-  const advisorByName=new Map(advisors.map(advisor=>[advisor.name,advisor]));
+  // 基金報表一律以姓名比對，不採用來源檔的分行欄位。
+  const advisorByName=new Map(advisors.map(advisor=>[normalizeAdvisorName(advisor.name),advisor]));
   const records=[];
   for(const row of table.querySelectorAll('tbody tr')){
     const cells=[...row.querySelectorAll('td')];
-    const name=String(cells[nameIndex]?.textContent??'').trim();
+    const name=normalizeAdvisorName(cells[nameIndex]?.textContent);
     const advisor=advisorByName.get(name);
     if(!advisor)continue;
     const totalFund=fundIndexes.reduce((sum,index)=>sum+asNumber(cells[index]?.textContent),0);
