@@ -29,6 +29,7 @@ const defaultBranchTarget=(branch,field)=>field==='quarterTarget'?progressTotal(
 const branchTarget=(branch,field)=>hasValue(branchTargets[branch]?.[field])?asNumber(branchTargets[branch][field]):defaultBranchTarget(branch,field);
 const branchRate=(progress,target)=>target>0?`${(progress/target*100).toFixed(2)}%`:'—';
 const money=value=>`${fmtWhole(value)} 萬`;
+const moneyPrecise=value=>`${formatAmount(asNumber(value))} 萬`;
 const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' })[char]);
 const setMessage=(message,tone='')=>{const node=$('data-message');node.textContent=message;node.className=`data-message ${tone}`;};
 const setSource=(message,tone='')=>{const node=$('source');node.textContent=message;node.className=`source ${tone}`;};
@@ -39,7 +40,7 @@ function render(){
   const loaded=Object.keys(performance).length;
   $('metrics').innerHTML=`<article class="metric primary"><span>基金目標</span><strong>${(fundTotal/10000).toFixed(2)}<em> 億</em></strong><p>第四季專案基金</p></article><article class="metric"><span>保險佣收目標</span><strong>${fmt(insuranceTotal)}<em> 萬</em></strong><p>第四季專案保險</p></article><article class="metric"><span>納入人員</span><strong>${advisors.length}<em> 位</em></strong><p>跨 3 家分行、6 個職級</p></article><article class="metric"><span>雲端實績</span><strong>${loaded}<em> 筆</em></strong><p>${currentUser?'已由 Supabase 同步':'登入後讀取'}</p></article>`;
   $('branches').innerHTML=branches.map(branch=>{const people=advisors.filter(item=>item.branch===branch);return`<article class="branch"><div><b>${esc(branch.replace('分行',''))}</b><small>${people.length} 位人員</small></div><strong>${fmt(total(people,'fund'))} <em>萬</em></strong><p>基金目標</p><aside><span>保險佣收目標</span><b>${fmt(total(people,'insurance'))} 萬</b></aside></article>`}).join('');
-  $('branch-performance').innerHTML=branches.map(branch=>{const quarterTarget=branchTarget(branch,'quarterTarget');const quarterProgress=progressTotal(branch,'quarterProgress');const fundTarget=branchTarget(branch,'fundTarget');const fundProgress=progressTotal(branch,'fundProgress');const insuranceTarget=branchTarget(branch,'insuranceTarget');const insuranceProgress=progressTotal(branch,'insuranceProgress');return`<tr><td class="name">${esc(branch)}</td><td>${money(quarterTarget)}</td><td>${money(quarterProgress)}</td><td class="rate">${branchRate(quarterProgress,quarterTarget)}</td><td>${money(fundTarget)}</td><td>${money(fundProgress)}</td><td class="rate">${branchRate(fundProgress,fundTarget)}</td><td>${money(insuranceTarget)}</td><td>${money(insuranceProgress)}</td><td class="rate">${branchRate(insuranceProgress,insuranceTarget)}</td></tr>`}).join('');
+  $('branch-performance').innerHTML=branches.map(branch=>{const quarterTarget=branchTarget(branch,'quarterTarget');const quarterProgress=progressTotal(branch,'quarterProgress');const fundTarget=branchTarget(branch,'fundTarget');const fundProgress=progressTotal(branch,'fundProgress');const insuranceTarget=branchTarget(branch,'insuranceTarget');const insuranceProgress=progressTotal(branch,'insuranceProgress');return`<tr><td class="name">${esc(branch)}</td><td>${fmtWhole(quarterTarget)}</td><td>${fmtWhole(quarterProgress)}</td><td class="rate">${branchRate(quarterProgress,quarterTarget)}</td><td>${money(fundTarget)}</td><td>${money(fundProgress)}</td><td class="rate">${branchRate(fundProgress,fundTarget)}</td><td>${money(insuranceTarget)}</td><td>${moneyPrecise(insuranceProgress)}</td><td class="rate">${branchRate(insuranceProgress,insuranceTarget)}</td></tr>`}).join('');
   $('branch-target-panel').hidden=!canWrite;
   $('branch-targets').innerHTML=branches.map(branch=>`<tr><td class="name">${esc(branch)}</td><td><input data-branch-target="quarterTarget" data-branch="${esc(branch)}" inputmode="decimal" value="${esc(branchTarget(branch,'quarterTarget'))}" aria-label="${esc(branch)}季責任額"></td><td><input data-branch-target="fundTarget" data-branch="${esc(branch)}" inputmode="decimal" value="${esc(branchTarget(branch,'fundTarget'))}" aria-label="${esc(branch)}基金目標"></td><td><input data-branch-target="insuranceTarget" data-branch="${esc(branch)}" inputmode="decimal" value="${esc(branchTarget(branch,'insuranceTarget'))}" aria-label="${esc(branch)}保險目標"></td></tr>`).join('');
   $('save-branch-targets').disabled=!canWrite;
@@ -47,7 +48,7 @@ function render(){
   const name=$('name-filter').value.trim();
   const shown=advisors.filter(item=>(selected==='all'||item.branch===selected)&&item.name.includes(name));
   $('row-count').textContent=`${shown.length} / ${advisors.length} 筆`;
-  $('staff').innerHTML=shown.map(item=>{const actual=performance[key(item.branch,item.name)]||{};return`<tr><td>${esc(item.branch)}</td><td><b class="level" style="color:${colors[item.level]}">${esc(item.level)}</b></td><td class="name">${esc(item.name)}</td><td>${esc(actual.quarterTarget||'—')}</td><td>${esc(actual.quarterProgress?fmtWhole(actual.quarterProgress):'—')}</td><td>${esc(actual.quarterRate||'—')}</td><td class="target">${fmt(item.fund)} 萬</td><td>${esc(actual.fundProgress?`${fmtWhole(actual.fundProgress)} 萬`:'—')}</td><td class="target">${fmt(insurance[item.level])} 萬</td><td>${esc(actual.insuranceProgress||'—')}</td></tr>`}).join('');
+  $('staff').innerHTML=shown.map(item=>{const actual=performance[key(item.branch,item.name)]||{};return`<tr><td>${esc(item.branch)}</td><td><b class="level" style="color:${colors[item.level]}">${esc(item.level)}</b></td><td class="name">${esc(item.name)}</td><td>${esc(actual.quarterTarget||'—')}</td><td>${esc(actual.quarterProgress?fmtWhole(actual.quarterProgress):'—')}</td><td>${esc(actual.quarterRate||'—')}</td><td class="target">${fmt(item.fund)} 萬</td><td>${esc(actual.fundProgress?`${fmtWhole(actual.fundProgress)} 萬`:'—')}</td><td class="target">${fmt(insurance[item.level])} 萬</td><td>${esc(actual.insuranceProgress?moneyPrecise(actual.insuranceProgress):'—')}</td></tr>`}).join('');
 }
 
 function setControls(enabled){$('sync-button').disabled=!enabled;$('csv-file').disabled=!enabled;$('raw-file').disabled=!enabled;$('pas-file').disabled=!enabled;$('save-branch-targets').disabled=!enabled;$('csv-button').classList.toggle('is-disabled',!enabled);$('raw-file-button').classList.toggle('is-disabled',!enabled);$('pas-file-button').classList.toggle('is-disabled',!enabled);}
@@ -156,15 +157,17 @@ async function parseQuarterRawFile(file){
   const rows=XLSX.utils.sheet_to_json(worksheet,{header:1,defval:'',raw:true});
   const sourceDate=String(worksheet.A3?.v??'').trim();
   if(!sourceDate)throw new Error('找不到 A3 的資料日期。');
-  const advisorByName=new Map(advisors.map(advisor=>[advisor.name,advisor]));
+  // 季職達原始檔也僅以姓名比對，不採用來源檔的分行欄位。
+  const advisorByName=new Map(advisors.map(advisor=>[normalizeAdvisorName(advisor.name),advisor]));
   const records=[];
   for(const row of rows){
-    const advisor=advisorByName.get(String(row[5]??'').trim());
+    const advisor=advisorByName.get(normalizeAdvisorName(row[5]));
     if(!advisor)continue;
     const quarterTarget=asNumber(row[9])*3;
     const quarterProgress=asNumber(row[59])+asNumber(row[39])+asNumber(row[40]);
+    const insuranceProgress=asNumber(row[40])+asNumber(row[56]);
     const current=performance[key(advisor.branch,advisor.name)]||{};
-    records.push({branch:advisor.branch,advisor_name:advisor.name,quarter_target:formatAmount(quarterTarget),quarter_progress:formatAmount(quarterProgress),quarter_rate:formatRate(quarterProgress,quarterTarget),fund_progress:current.fundProgress||'',insurance_progress:current.insuranceProgress||'',source_date:sourceDate});
+    records.push({branch:advisor.branch,advisor_name:advisor.name,quarter_target:formatAmount(quarterTarget),quarter_progress:formatAmount(quarterProgress),quarter_rate:formatRate(quarterProgress,quarterTarget),fund_progress:current.fundProgress||'',insurance_progress:formatAmount(insuranceProgress/10000),source_date:sourceDate});
   }
   const missing=advisors.filter(advisor=>!records.some(record=>record.advisor_name===advisor.name));
   if(missing.length)throw new Error(`原始檔缺少 ${missing.length} 位人員：${missing.map(item=>item.name).join('、')}`);
