@@ -58,7 +58,7 @@ function render(){
   $('staff').innerHTML=shown.map(item=>{const actual=performance[key(item.branch,item.name)]||{};const count=achievedItemCount(item,actual);const needsAttention=count<=1;return`<tr><td>${esc(item.branch)}</td><td><b class="level" style="color:${colors[item.level]}">${esc(item.level)}</b></td><td class="name ${needsAttention?'needs-attention':''}">${esc(item.name)}</td><td>${esc(actual.quarterTarget||'—')}</td><td>${esc(actual.quarterProgress?fmtWhole(actual.quarterProgress):'—')}</td><td>${esc(actual.quarterRate||'—')}</td><td class="target">${fmt(fundTarget(item))} 萬</td><td>${esc(actual.fundProgress?`${fmtWhole(actual.fundProgress)} 萬`:'—')}</td><td class="target">${fmt(insuranceTarget(item))} 萬</td><td>${esc(actual.insuranceProgress?money(actual.insuranceProgress):'—')}</td><td class="achievement ${count===3?'complete':''} ${needsAttention?'needs-attention':''}">${count} / 3</td></tr>`}).join('');
 }
 
-function setControls(enabled){$('sync-button').disabled=!enabled;$('csv-file').disabled=!enabled;$('raw-file').disabled=!enabled;$('pas-file').disabled=!enabled;$('save-branch-targets').disabled=!enabled;$('csv-button').classList.toggle('is-disabled',!enabled);$('raw-file-button').classList.toggle('is-disabled',!enabled);$('pas-file-button').classList.toggle('is-disabled',!enabled);}
+function setControls(enabled){$('sync-button').disabled=!enabled;$('csv-file').disabled=!enabled;$('raw-file').disabled=!enabled;$('pas-file').disabled=!enabled;$('save-branch-targets').disabled=!enabled;$('clear-upload-button').disabled=!enabled;$('csv-button').classList.toggle('is-disabled',!enabled);$('raw-file-button').classList.toggle('is-disabled',!enabled);$('pas-file-button').classList.toggle('is-disabled',!enabled);}
 function recordMap(records){return Object.fromEntries(records.map(item=>[key(item.branch,item.advisor_name),{quarterTarget:item.quarter_target,quarterProgress:item.quarter_progress,quarterRate:item.quarter_rate,fundProgress:item.fund_progress,insuranceProgress:item.insurance_progress,sourceDate:item.source_date||''}]));}
 function branchTargetMap(records){return Object.fromEntries(records.map(item=>[item.branch,{quarterTarget:item.quarter_target,fundTarget:item.fund_progress,insuranceTarget:item.insurance_progress}]));}
 
@@ -225,6 +225,23 @@ async function uploadPasFundFile(file){
   $('pas-file').value='';
 }
 
+async function clearUploadedData(){
+  if(!supabase||!currentUser||!canWrite)return;
+  const confirmed=window.confirm('確定清空所有人員已上傳的季職達、基金與保險進度嗎？人員名單、個人目標及分行手動目標會保留。');
+  if(!confirmed)return;
+  try{
+    const {data:existingRecords,error:readError}=await supabase.from('performance_records').select('branch,advisor_name').neq('advisor_name',branchTargetRecordName);
+    if(readError)throw readError;
+    const records=(existingRecords||[]).map(record=>({branch:record.branch,advisor_name:record.advisor_name,quarter_target:'',quarter_progress:'',quarter_rate:'',fund_progress:'',insurance_progress:'',source_date:''}));
+    if(!records.length){setMessage('目前沒有可清空的上傳數據。');return;}
+    setMessage('正在清空上傳數據…');
+    const {error}=await supabase.from('performance_records').upsert(records,{onConflict:'branch,advisor_name'});
+    if(error)throw error;
+    await loadPerformance();
+    setMessage('已清空所有人員的上傳數據；人員名單、個人目標及分行手動目標已保留。','success');
+  }catch(error){setMessage(`清空上傳數據失敗：${error.message||'請稍後再試。'}`,'error');}
+}
+
 async function saveBranchTargets(){
   if(!supabase||!currentUser||!canWrite)return;
   try{
@@ -260,7 +277,7 @@ async function signInWithManagerPassword(event){
 
 async function init(){
   render();
-  $('branch-filter').addEventListener('change',render);$('name-filter').addEventListener('input',render);$('sync-button').addEventListener('click',loadPerformance);$('save-branch-targets').addEventListener('click',()=>void saveBranchTargets());$('raw-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadQuarterRawFile(file);});$('pas-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadPasFundFile(file);});$('csv-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadPerformanceFile(file);});
+  $('branch-filter').addEventListener('change',render);$('name-filter').addEventListener('input',render);$('sync-button').addEventListener('click',loadPerformance);$('save-branch-targets').addEventListener('click',()=>void saveBranchTargets());$('clear-upload-button').addEventListener('click',()=>void clearUploadedData());$('raw-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadQuarterRawFile(file);});$('pas-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadPasFundFile(file);});$('csv-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadPerformanceFile(file);});
   if(!isConfigured){$('setup-panel').hidden=false;$('login-panel').hidden=true;$('auth-button').disabled=true;$('auth-button').textContent='尚未設定 Supabase';setSource('● 等待 Supabase 連線設定');setMessage('尚未連接雲端資料庫。');return;}
   $('manager-login-form').hidden=!hasManagerUploadAccount;
   $('auth-button').addEventListener('click',()=>{$('login-panel').hidden=false;(hasManagerUploadAccount?$('manager-password'):$('email')).focus();});$('login-form').addEventListener('submit',event=>void signIn(event));$('manager-login-form').addEventListener('submit',event=>void signInWithManagerPassword(event));$('signout-button').addEventListener('click',async()=>{await supabase.auth.signOut();await applySession(null);});
