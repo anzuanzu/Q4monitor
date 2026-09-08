@@ -58,7 +58,7 @@ function render(){
   $('staff').innerHTML=shown.map(item=>{const actual=performance[key(item.branch,item.name)]||{};const count=achievedItemCount(item,actual);const needsAttention=count<=1;return`<tr><td>${esc(item.branch)}</td><td><b class="level" style="color:${colors[item.level]}">${esc(item.level)}</b></td><td class="name ${needsAttention?'needs-attention':''}">${esc(item.name)}</td><td>${esc(actual.quarterTarget||'—')}</td><td>${esc(actual.quarterProgress?fmtWhole(actual.quarterProgress):'—')}</td><td>${esc(actual.quarterRate||'—')}</td><td class="target">${fmt(fundTarget(item))} 萬</td><td>${esc(actual.fundProgress?`${fmtWhole(actual.fundProgress)} 萬`:'—')}</td><td class="target">${fmt(insuranceTarget(item))} 萬</td><td>${esc(actual.insuranceProgress?money(actual.insuranceProgress):'—')}</td><td class="achievement ${count===3?'complete':''} ${needsAttention?'needs-attention':''}">${count} / 3</td></tr>`}).join('');
 }
 
-function setControls(enabled){$('sync-button').disabled=!enabled;$('csv-file').disabled=!enabled;$('raw-file').disabled=!enabled;$('pas-file').disabled=!enabled;$('save-branch-targets').disabled=!enabled;$('clear-upload-button').disabled=!enabled;$('csv-button').classList.toggle('is-disabled',!enabled);$('raw-file-button').classList.toggle('is-disabled',!enabled);$('pas-file-button').classList.toggle('is-disabled',!enabled);}
+function setControls(enabled){$('sync-button').disabled=!enabled;$('csv-file').disabled=!enabled;$('raw-file').disabled=!enabled;$('team-fund-file').disabled=!enabled;$('pas-file').disabled=!enabled;$('save-branch-targets').disabled=!enabled;$('clear-upload-button').disabled=!enabled;$('csv-button').classList.toggle('is-disabled',!enabled);$('raw-file-button').classList.toggle('is-disabled',!enabled);$('team-fund-file-button').classList.toggle('is-disabled',!enabled);$('pas-file-button').classList.toggle('is-disabled',!enabled);}
 function recordMap(records){return Object.fromEntries(records.map(item=>[key(item.branch,item.advisor_name),{quarterTarget:item.quarter_target,quarterProgress:item.quarter_progress,quarterRate:item.quarter_rate,fundProgress:item.fund_progress,insuranceProgress:item.insurance_progress,sourceDate:item.source_date||''}]));}
 function branchTargetMap(records){return Object.fromEntries(records.map(item=>[item.branch,{quarterTarget:item.quarter_target,fundTarget:item.fund_progress,insuranceTarget:item.insurance_progress}]));}
 
@@ -96,6 +96,7 @@ function parseCsvRows(text){
 
 function normalizeHeader(value){return String(value??'').replace(/^\uFEFF/,'').replace(/[（）]/g,char=>char==='（'?'(':')').replace(/\s/g,'').trim();}
 function normalizeAdvisorName(value){return String(value??'').replace(/\s/g,'').trim();}
+function maskedAdvisorKey(value){const chars=[...normalizeAdvisorName(value)];return chars.length>=3?`${chars[0]}${chars[2]}`:'';}
 
 function recordsFromRows(rows){
   const [headerRow,...dataRows]=rows;
@@ -152,6 +153,38 @@ async function parsePasFundFile(file){
     records.push({branch:advisor.branch,advisor_name:advisor.name,quarter_target:current.quarterTarget||'',quarter_progress:current.quarterProgress||'',quarter_rate:current.quarterRate||'',fund_progress:formatAmount(totalFund/10000),insurance_progress:current.insuranceProgress||'',source_date:current.sourceDate||''});
   }
   if(!records.length)throw new Error('找不到可與目前名單比對的理專姓名。');
+  return records;
+}
+
+async function parseTeamFundFile(file){
+  if(file.name.split('.').pop()?.toLowerCase()!=='xlsx')throw new Error('基金團獎戰報僅支援 .xlsx。');
+  const workbook=XLSX.read(await file.arrayBuffer(),{type:'array'});
+  const sheetName=workbook.SheetNames.find(name=>normalizeHeader(name).replace(/[<>]/g,'')==='團獎理專銷量');
+  if(!sheetName)throw new Error('找不到「<團獎>理專銷量」工作表。');
+  const rows=XLSX.utils.sheet_to_json(workbook.Sheets[sheetName],{header:1,defval:'',raw:true});
+  const headerRowIndex=rows.findIndex(row=>row.map(normalizeHeader).includes('分行名稱')&&row.map(normalizeHeader).includes('理專姓名')&&row.map(normalizeHeader).includes('合計銷量'));
+  if(headerRowIndex<0)throw new Error('找不到「分行名稱」、「理專姓名」或「合計銷量」欄位。');
+  const headers=rows[headerRowIndex].map(normalizeHeader);
+  const branchIndex=headers.indexOf('分行名稱');
+  const nameIndex=headers.indexOf('理專姓名');
+  const totalIndex=headers.indexOf('合計銷量');
+  const advisorByMaskedKey=new Map();
+  for(const advisor of advisors){
+    const matchKey=`${advisor.branch}-${maskedAdvisorKey(advisor.name)}`;
+    if(advisorByMaskedKey.has(matchKey))throw new Error(`名單中有無法區分的隱碼姓名：${advisor.name}。`);
+    advisorByMaskedKey.set(matchKey,advisor);
+  }
+  const matchedTotals=new Map();
+  for(const row of rows.slice(headerRowIndex+1)){
+    const branch=String(row[branchIndex]??'').trim();
+    const maskedName=String(row[nameIndex]??'').trim();
+    const advisor=advisorByMaskedKey.get(`${branch}-${maskedAdvisorKey(maskedName)}`);
+    if(!advisor)continue;
+    const advisorKey=key(advisor.branch,advisor.name);
+    matchedTotals.set(advisorKey,{advisor,total:(matchedTotals.get(advisorKey)?.total||0)+asNumber(row[totalIndex])});
+  }
+  const records=[...matchedTotals.values()].map(({advisor,total})=>{const current=performance[key(advisor.branch,advisor.name)]||{};return{branch:advisor.branch,advisor_name:advisor.name,quarter_target:current.quarterTarget||'',quarter_progress:current.quarterProgress||'',quarter_rate:current.quarterRate||'',fund_progress:formatAmount(total/10000),insurance_progress:current.insuranceProgress||'',source_date:current.sourceDate||''};});
+  if(!records.length)throw new Error('找不到可依分行與姓名隱碼比對的人員。');
   return records;
 }
 
@@ -225,6 +258,20 @@ async function uploadPasFundFile(file){
   $('pas-file').value='';
 }
 
+async function uploadTeamFundFile(file){
+  if(!supabase||!currentUser||!canWrite)return;
+  try{
+    setMessage('正在讀取基金團獎戰報…');
+    const records=await parseTeamFundFile(file);
+    setMessage(`正在更新 ${records.length} 位人員的基金進度…`);
+    const {error}=await supabase.from('performance_records').upsert(records,{onConflict:'branch,advisor_name'});
+    if(error)throw error;
+    await loadPerformance();
+    setMessage(`已更新 ${records.length} 位人員的基金進度；資料來自「<團獎>理專銷量」的合計銷量，並依分行及姓名首、第三字比對。`,'success');
+  }catch(error){setMessage(`基金團獎戰報上傳失敗：${error.message||'請確認 Excel 格式。'}`,'error');}
+  $('team-fund-file').value='';
+}
+
 async function clearUploadedData(){
   if(!supabase||!currentUser||!canWrite)return;
   const confirmed=window.confirm('確定清空所有人員已上傳的季職達、基金與保險進度嗎？人員名單、個人目標及分行手動目標會保留。');
@@ -277,7 +324,7 @@ async function signInWithManagerPassword(event){
 
 async function init(){
   render();
-  $('branch-filter').addEventListener('change',render);$('name-filter').addEventListener('input',render);$('sync-button').addEventListener('click',loadPerformance);$('save-branch-targets').addEventListener('click',()=>void saveBranchTargets());$('clear-upload-button').addEventListener('click',()=>void clearUploadedData());$('raw-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadQuarterRawFile(file);});$('pas-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadPasFundFile(file);});$('csv-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadPerformanceFile(file);});
+  $('branch-filter').addEventListener('change',render);$('name-filter').addEventListener('input',render);$('sync-button').addEventListener('click',loadPerformance);$('save-branch-targets').addEventListener('click',()=>void saveBranchTargets());$('clear-upload-button').addEventListener('click',()=>void clearUploadedData());$('raw-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadQuarterRawFile(file);});$('team-fund-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadTeamFundFile(file);});$('pas-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadPasFundFile(file);});$('csv-file').addEventListener('change',event=>{const [file]=event.target.files;if(file)void uploadPerformanceFile(file);});
   if(!isConfigured){$('setup-panel').hidden=false;$('login-panel').hidden=true;$('auth-button').disabled=true;$('auth-button').textContent='尚未設定 Supabase';setSource('● 等待 Supabase 連線設定');setMessage('尚未連接雲端資料庫。');return;}
   $('manager-login-form').hidden=!hasManagerUploadAccount;
   $('auth-button').addEventListener('click',()=>{$('login-panel').hidden=false;(hasManagerUploadAccount?$('manager-password'):$('email')).focus();});$('login-form').addEventListener('submit',event=>void signIn(event));$('manager-login-form').addEventListener('submit',event=>void signInWithManagerPassword(event));$('signout-button').addEventListener('click',async()=>{await supabase.auth.signOut();await applySession(null);});
