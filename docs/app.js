@@ -97,6 +97,7 @@ function parseCsvRows(text){
 function normalizeHeader(value){return String(value??'').replace(/^\uFEFF/,'').replace(/[（）]/g,char=>char==='（'?'(':')').replace(/\s/g,'').trim();}
 function normalizeAdvisorName(value){return String(value??'').replace(/\s/g,'').trim();}
 function maskedAdvisorKey(value){const chars=[...normalizeAdvisorName(value)];return chars.length>=3?`${chars[0]}${chars[2]}`:'';}
+const teamFundNameOverrides=new Map([['黃卿','黃淑卿']]);
 
 function recordsFromRows(rows){
   const [headerRow,...dataRows]=rows;
@@ -169,6 +170,7 @@ async function parseTeamFundFile(file){
   const nameIndex=headers.indexOf('理專姓名');
   const totalIndex=headers.indexOf('合計銷量');
   const advisorByMaskedKey=new Map();
+  const advisorByName=new Map(advisors.map(advisor=>[advisor.name,advisor]));
   for(const advisor of advisors){
     const matchKey=`${advisor.branch}-${maskedAdvisorKey(advisor.name)}`;
     if(advisorByMaskedKey.has(matchKey))throw new Error(`名單中有無法區分的隱碼姓名：${advisor.name}。`);
@@ -178,7 +180,8 @@ async function parseTeamFundFile(file){
   for(const row of rows.slice(headerRowIndex+1)){
     const branch=String(row[branchIndex]??'').trim();
     const maskedName=String(row[nameIndex]??'').trim();
-    const advisor=advisorByMaskedKey.get(`${branch}-${maskedAdvisorKey(maskedName)}`);
+    const nameKey=maskedAdvisorKey(maskedName);
+    const advisor=teamFundNameOverrides.has(nameKey)?advisorByName.get(teamFundNameOverrides.get(nameKey)):advisorByMaskedKey.get(`${branch}-${nameKey}`);
     if(!advisor)continue;
     const advisorKey=key(advisor.branch,advisor.name);
     matchedTotals.set(advisorKey,{advisor,total:(matchedTotals.get(advisorKey)?.total||0)+asNumber(row[totalIndex])});
@@ -267,7 +270,7 @@ async function uploadTeamFundFile(file){
     const {error}=await supabase.from('performance_records').upsert(records,{onConflict:'branch,advisor_name'});
     if(error)throw error;
     await loadPerformance();
-    setMessage(`已更新 ${records.length} 位人員的基金進度；資料來自「<團獎>理專銷量」的合計銷量，並依分行及姓名首、第三字比對。`,'success');
+    setMessage(`已更新 ${records.length} 位人員的基金進度；資料來自「<團獎>理專銷量」的合計銷量，並依分行及姓名首、第三字比對；黃○卿直接對應黃淑卿。`,'success');
   }catch(error){setMessage(`基金團獎戰報上傳失敗：${error.message||'請確認 Excel 格式。'}`,'error');}
   $('team-fund-file').value='';
 }
